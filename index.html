@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>py-to-ipynb</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 20px;
+        max-width: 1000px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 220px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        padding: 12px;
+        border: 1px solid #9993;
+        border-radius: 6px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .row > * {
+        flex: 1 1 0;
+        min-width: 320px;
+      }
+      button {
+        padding: 8px 14px;
+        font-size: 14px;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin: 10px 0 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>py-to-ipynb</h1>
+    <p>Paste Python code and convert to a Jupyter notebook.</p>
+
+    <div class="row">
+      <div>
+        <h3>Python</h3>
+        <textarea id="pyInput" placeholder="# %%\nprint('hello')"></textarea>
+      </div>
+      <div>
+        <h3>Notebook JSON</h3>
+        <pre id="nbOutput"></pre>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="convertBtn">Convert</button>
+      <button id="downloadBtn" disabled>Download .ipynb</button>
+    </div>
+
+    <script type="module">
+      import { pyToIpynb } from "./dist/index.js";
+
+      const input = document.getElementById("pyInput");
+      const output = document.getElementById("nbOutput");
+      const convertBtn = document.getElementById("convertBtn");
+      const downloadBtn = document.getElementById("downloadBtn");
+
+      let lastJson = "";
+
+      function render() {
+        const source = input.value || "";
+        const notebook = pyToIpynb(source);
+        lastJson = JSON.stringify(notebook, null, 2);
+        output.textContent = lastJson;
+        downloadBtn.disabled = !lastJson;
+      }
+
+      convertBtn.addEventListener("click", render);
+
+      downloadBtn.addEventListener("click", () => {
+        if (!lastJson) return;
+        const blob = new Blob([lastJson], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "notebook.ipynb";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+    </script>
+  </body>
+</html>
