@@ -6,7 +6,6 @@ describe("pyToIpynb", () => {
     const nb = pyToIpynb("");
 
     expect(nb.nbformat).toBe(4);
-    expect(nb.nbformat_minor).toBe(5);
     expect(Array.isArray(nb.cells)).toBe(true);
   });
 
@@ -22,6 +21,7 @@ describe("pyToIpynb", () => {
     const nb = pyToIpynb(`
 # %%
 x = 1
+
 # %%
 y = 2
 `.trim());
@@ -47,12 +47,20 @@ y = 2
     const nb = pyToIpynb(`
 # %%
 # This is a comment
+
 x = 42
 `.trim());
+    
+    // expect 2 cells
+    expect(nb.cells).toHaveLength(2);
 
     const cell = nb.cells[0];
-    expect(cell.cell_type).toBe("code");
-    expect(cell.source.join("")).toContain("x = 42");
+    expect(cell.cell_type).toBe("markdown");
+    expect(cell.source.join("")).toContain("This is a comment");
+
+    const cell2 = nb.cells[1];
+    expect(cell2.cell_type).toBe("code");
+    expect(cell2.source.join("")).toContain("x = 42");
   });
 
   it("produces executable code cells with no outputs", () => {

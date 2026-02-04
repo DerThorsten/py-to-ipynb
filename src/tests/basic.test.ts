@@ -33,8 +33,6 @@ describe("basic conversion", () => {
       readTestFile(file)
     );
 
-    // print actual for debugging
-    console.log(JSON.stringify(actual, null, 2));
 
     const expected = JSON.parse(
       readTestFile(ipynb_filename)

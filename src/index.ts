@@ -1,71 +1,3 @@
-function splitCommentSections(block: string[]): string[][] {
-    // Only split if there's a multi-line comment block (pure comments) surrounded by code
-    // Single comment lines mixed in code should NOT be split
-    
-    const result: string[][] = [];
-    let current: string[] = [];
-    let lastWasCode = false;
-    
-    let commentBlockStart = -1;
-    let inCommentBlock = false;
-    let commentLineCount = 0;
-    
-    for (let i = 0; i < block.length; i++) {
-        const line = block[i];
-        const isComment = line.trim().startsWith("#");
-        const isEmpty = line.trim() === "";
-        
-        if (isEmpty) {
-            current.push(line);
-            if (inCommentBlock && !isComment) {
-                // Comment block might be ending
-            }
-            continue;
-        }
-        
-        if (isComment) {
-            if (!inCommentBlock && lastWasCode) {
-                commentBlockStart = i;
-                inCommentBlock = true;
-                commentLineCount = 0;
-            }
-            if (inCommentBlock) {
-                commentLineCount++;
-            }
-            current.push(line);
-        } else {
-            // This is code
-            if (inCommentBlock && commentLineCount >= 2) {
-                // We have a multi-line comment block - split it out
-                const commentEnd = current.findLastIndex(l => l.trim().startsWith("#"));
-                const beforeComments = current.slice(0, commentBlockStart);
-                const commentLines = current.slice(commentBlockStart, commentEnd + 1);
-                
-                if (beforeComments.some(l => l.trim() !== "")) {
-                    result.push(beforeComments);
-                }
-                if (commentLines.some(l => l.trim() !== "")) {
-                    result.push(commentLines);
-                }
-                current = [line];
-            } else {
-                // Single comment line or no comment - keep with code
-                current.push(line);
-            }
-            inCommentBlock = false;
-            commentBlockStart = -1;
-            commentLineCount = 0;
-            lastWasCode = true;
-        }
-    }
-    
-    if (current.length > 0 && current.some(l => l.trim() !== "")) {
-        result.push(current);
-    }
-    
-    return result.length > 0 ? result : [block];
-}
-
 function extractTopDocstring(source: string) {
     const trimmed = source.trimStart();
 
@@ -79,6 +11,8 @@ function extractTopDocstring(source: string) {
 
     const fullMatch = match[0];
     const content = match[1];
+
+    console.log("Extracted docstring content:", content,"end of content");
 
     // Convert underline-style headers to markdown headers
     let markdown = content
@@ -116,9 +50,106 @@ function extractTopDocstring(source: string) {
 }
 
 
+
+
+function isMarkdownCellStart(line: string): boolean {
+    // check if the trimmed line only contains # characters, at least 20
+    const trimmed = line.trim();
+    if(/^#{20,}$/.test(trimmed)){
+        return true;
+    }
+    // check if the trimmed line starts with #%% or # %%
+    if(trimmed.startsWith("# %%") || trimmed.startsWith("#%%")){
+        return true;
+    }
+    return false;
+}
+
+function splitInBlocks(source: string): {lines: string[], type: string}[] {
+    
+    // split into lines 
+    const lines = source.replace(/\r\n/g, "\n").split("\n");
+    let isCurrentMarkdown = false;
+
+    let blocks : {lines: string[], type: string}[] = [];
+    let currentBlock: {lines: string[], type: string} = {lines: [], type: isCurrentMarkdown ? "markdown" : "code"};
+
+
+    for(let i=0; i<lines.length; i++) {
+        if(!isCurrentMarkdown){
+            // check if this line indicates start of markdown cell
+            if(isMarkdownCellStart(lines[i])){
+                isCurrentMarkdown = true;
+                // start new block
+                if(currentBlock.lines.length > 0){
+                    blocks.push(currentBlock);
+                }
+                currentBlock = {lines: [], type: "markdown"};
+            }
+            else{
+                currentBlock.lines.push(lines[i]);
+            }
+        }
+        else{
+            // check if this line indicates end of markdown cell
+            if(lines[i].trim() === ""){
+                isCurrentMarkdown = false;
+                // start new block
+                if(currentBlock.lines.length > 0){
+                    blocks.push(currentBlock);
+                }
+                currentBlock = {lines: [], type: "code"};
+            }
+            else{
+                currentBlock.lines.push(lines[i]);
+            }
+        }
+    }
+    // push last block
+    if(currentBlock.lines.length > 0){
+        blocks.push(currentBlock);
+    }
+    return blocks;
+}
+
+function rstToMarkdown(lines: string[]): string[] {
+    const markdownLines: string[] = [];
+    let i = 0;
+
+    while (i < lines.length) {
+        let line = lines[i];
+
+        // Check for underline-style headers
+        if (i + 1 < lines.length) {
+            const nextLine = lines[i + 1];
+            if (/^=+$/.test(nextLine.trim())) {
+                // Level 1 header
+                markdownLines.push(`# ${line.trim()}`);
+                i += 2;
+                continue;
+            } else if (/^-+$/.test(nextLine.trim())) {
+                // Level 2 header
+                markdownLines.push(`## ${line.trim()}`);
+                i += 2;
+                continue;
+            }
+        }
+
+        // Convert reStructuredText inline links to markdown links
+        // Format: `text <url>`_ -> [text](url)
+        line = line.replace(/`([^<]+)\s+<([^>]+)>`_/g, (_, text, url) => {
+            return `[${text}](${url})`;
+        });
+
+        markdownLines.push(line);
+        i++;
+    }
+
+    return markdownLines;
+}
+
 export function pyToIpynb(source: string) {
     const cells: any[] = [];
-
     const doc = extractTopDocstring(source);
 
     if (doc) {
@@ -133,79 +164,44 @@ export function pyToIpynb(source: string) {
         source = doc.rest;
     }
 
+    const blocks = splitInBlocks(source);
 
-
-
-
-
-
-
-    const lines = source.replace(/\r\n/g, "\n").split("\n");
-
-    const blocks: string[][] = [];
-    let current: string[] = [];
-
-    for (const line of lines) {
-        if (line.startsWith("# %%")) {
-            if (current.length) blocks.push(current);
-            current = [];
-        } else {
-            current.push(line);
-        }
-    }
-    if (current.length) blocks.push(current);
-
-    // Further split blocks that have comment sections surrounded by code
-    const refinedBlocks: string[][] = [];
     for (const block of blocks) {
-        const subBlocks = splitCommentSections(block);
-        refinedBlocks.push(...subBlocks);
-    }
-
-    cells.push(...refinedBlocks.map(block => {
-        const isMarkdown = block.every(
-        l => l.trim().startsWith("#") || l.trim() === ""
-        );
-
-        if (isMarkdown) {
-        return {
-            cell_type: "markdown",
-            metadata: {},
-            source: block.map(l => {
-                // Remove leading "# " or "#"
-                const stripped = l.replace(/^#+ ?/, "");
-                // Skip lines that were only "#" symbols
-                if (stripped === l && l.trim() !== "" && !l.trim().startsWith("#")) {
-                    return l + "\n";
-                }
-                // If line was only "#" symbols, skip it
-                if (l.trim() !== "" && /^#+$/.test(l.trim())) {
-                    return "";
-                }
-                return stripped + "\n";
-            })
-        };
+        if (block.type === "markdown") {
+            cells.push({
+                cell_type: "markdown",
+                metadata: {},
+                source: block.lines
+                    .map(l => l.replace(/^#\s?/, "") + "\n")
+            });
+        } else {
+            // process code block
+            // convert any rst in comments to markdown
+            const processedLines = rstToMarkdown(block.lines);
+            cells.push({
+                cell_type: "code",
+                execution_count: null,
+                metadata: {},
+                outputs: [],
+                source: processedLines
+                    .map(l => l + "\n")
+            });
         }
-
-        return {
-        cell_type: "code",
-        metadata: {},
-        source: block.map(l => l + "\n"),
-        execution_count: null,
-        outputs: []
-        };
-    }));
-    
+    }
 
     return {
         nbformat: 4,
-        nbformat_minor: 5,
+        nbformat_minor: 0,
         metadata: {
-        kernelspec: {
-            name: "python3",
-            display_name: "Python 3"
-        }
+            kernelspec: {
+                name: "python3",
+                display_name: "Python 3"
+            },
+            language_info: {
+                name: "python",
+                version: "3.x"
+            }
         },
         cells
-    };
+    };  
 }
